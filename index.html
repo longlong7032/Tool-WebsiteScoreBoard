@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bảng điểm Bida Mevivu (TV)</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-size: 20px;
+        }
+
+        .video-wrap {
+            background: #000;
+            height: 420px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video,
+        img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        button {
+            font-size: 18px !important;
+            padding: 10px 14px !important;
+        }
+
+        .card {
+            background: #111;
+            border: 1px solid #333;
+        }
+
+        .log {
+            white-space: pre-wrap;
+            font-size: 14px;
+            max-height: 200px;
+            overflow: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-3">
+
+        <h3 class="mb-3">🎱 Bảng điểm Bida Mevivu (TV)</h3>
+
+        <div class="row g-3">
+
+            <!-- CAMERA -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+
+                        <div class="video-wrap mb-3" id="videoWrap">
+                            <div class="text-center text-muted">Chưa có camera</div>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button id="startBtn" class="btn btn-success">▶ Bật camera</button>
+                            <button id="stopBtn" class="btn btn-danger">⏹ Dừng</button>
+                            <button id="setIpBtn" class="btn btn-warning">🌐 IP Cam</button>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCORE -->
+            <div class="col-lg-4">
+
+                <div class="card mb-3">
+                    <div class="card-body">
+
+                        <h5>🎱 Ván đấu</h5>
+
+                        <div class="input-group mb-2">
+                            <input id="matchName" class="form-control" placeholder="Tên ván">
+                            <button class="btn btn-primary" onclick="createMatch()">Tạo</button>
+                        </div>
+
+                        <div id="currentMatch" class="text-muted mb-2"></div>
+
+                        <button class="btn btn-danger w-100 mb-2" onclick="endMatch()">🏁 Kết thúc</button>
+
+                        <hr>
+
+                        <h5>👤 Người chơi</h5>
+
+                        <div class="input-group mb-2">
+                            <input id="playerName" class="form-control" placeholder="Tên người chơi">
+                            <button class="btn btn-success" onclick="addPlayer()">Thêm</button>
+                        </div>
+
+                        <div id="playerList"></div>
+
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5>📜 Lịch sử</h5>
+                        <div id="historyList"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h6>Log</h6>
+                        <div id="log" class="log"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const videoWrap = document.getElementById('videoWrap');
+        const logEl = document.getElementById('log');
+
+        let stream = null;
+        let ipCam = localStorage.getItem("ip_cam") || "";
+
+        /* LOG */
+        function log(msg) {
+            logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logEl.textContent;
+        }
+
+        /* START */
+        async function startCamera() {
+            stopCamera();
+
+            // Ưu tiên IP CAM cho TV
+            if (ipCam) {
+                videoWrap.innerHTML = `<img src="${ipCam}" style="width:100%">`;
+                log("✅ Đang dùng IP Camera");
+                return;
+            }
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoWrap.innerHTML = `<video autoplay playsinline></video>`;
+                const video = videoWrap.querySelector("video");
+                video.srcObject = stream;
+
+                log("✅ Camera browser OK");
+
+            } catch (e) {
+                log("❌ Không dùng được camera, hãy nhập IP Cam");
+            }
+        }
+
+        /* STOP */
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+        }
+
+        /* SET IP CAM */
+        document.getElementById("setIpBtn").onclick = () => {
+            const ip = prompt("Nhập IP camera (vd: http://192.168.1.100:8080/video)");
+            if (!ip) return;
+            ipCam = ip;
+            localStorage.setItem("ip_cam", ip);
+            startCamera();
+        };
+
+        /* BUTTON */
+        document.getElementById("startBtn").onclick = startCamera;
+        document.getElementById("stopBtn").onclick = stopCamera;
+
+        /* SCORE */
+        let match = null;
+        const history = JSON.parse(localStorage.getItem('bida_history') || '[]');
+
+        function createMatch() {
+            const name = matchName.value.trim();
+            if (!name) return;
+
+            match = {
+                name,
+                players: [],
+                time: new Date().toLocaleString()
+            };
+
+            currentMatch.textContent = "Đang chơi: " + name;
+            playerList.innerHTML = "";
+        }
+
+        function addPlayer() {
+            if (!match) return;
+
+            const n = playerName.value.trim();
+            if (!n) return;
+
+            match.players.push({ name: n, score: 0 });
+            playerName.value = "";
+
+            renderPlayers();
+        }
+
+        function changeScore(i, d) {
+            match.players[i].score += d;
+            renderPlayers();
+        }
+
+        function renderPlayers() {
+            playerList.innerHTML = "";
+
+            match.players.forEach((p, i) => {
+                playerList.innerHTML += `
+        <div class="border p-2 mb-2">
+            <strong>${p.name}</strong>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-danger" onclick="changeScore(${i},-1)">−</button>
+                <span class="fw-bold">${p.score}</span>
+                <button class="btn btn-success" onclick="changeScore(${i},1)">+</button>
+            </div>
+        </div>`;
+            });
+        }
+
+        function endMatch() {
+            if (!match || !match.players.length) return;
+
+            const max = Math.max(...match.players.map(p => p.score));
+            const winners = match.players
+                .filter(p => p.score === max)
+                .map(p => p.name)
+                .join(", ");
+
+            match.winner = winners || "Hòa";
+
+            history.unshift(match);
+            localStorage.setItem("bida_history", JSON.stringify(history));
+
+            renderHistory();
+
+            match = null;
+            currentMatch.textContent = "";
+            playerList.innerHTML = "";
+        }
+
+        function renderHistory() {
+            historyList.innerHTML = "";
+
+            history.forEach(m => {
+                historyList.innerHTML += `
+        <div class="border-bottom py-2">
+            <strong>${m.name}</strong><br>
+            🏆 ${m.winner}
+        </div>`;
+            });
+        }
+
+        renderHistory();
+
+        /* AUTO LOAD IP CAM */
+        if (ipCam) {
+            startCamera();
+        }
+    </script>
+
+</body>
+
+</html>
+```
